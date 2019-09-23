@@ -5,6 +5,8 @@ Update 9/22/2019:  I forked this project and updated it to make it work in Visua
 
 I took the liberty of updating the project template as well, since Android 26 and the associated support libs are several years old now.  The new template has dependencies on Android API level 28.  The extension won't replace the old template with the new one if you have previously installed Xamaridea.  If you'd like to use the updated Android project template, I suggest uninstalling Xamaridea and deleting the following directory:  %userprofile%\AppData\Roaming\Xamaridea\Template_v.1.0.1.  When you reinstall the extension by running the Xamaridea.VisualStudioPlugin.vsix you compiled, the updated project template will be installed.
 
+I also updated the extension to honor the asynchronous autoloading mechanism that Visual Studio 2019 requires extensions to use.  Please keep in mind that since the extension is loaded asynchronously, it might not be immediately available when you open a new project.  If you don't see the "Open in IDEA/Android Studio" menu item in the .axml/.xml Solution Explorer context menu, try again in a few minutes.
+
 Visual Studio extension, allows editing .axml files in **IntelliJ IDEA** or **Android Studio** (Xamarin.Android). It creates a fake android project and uses resources from your Xamarin.Android project by link (thanks to gradle) so every change made in Android IDE will be saved. Available at https://visualstudiogallery.msdn.microsoft.com/9f5a516a-f4d0-4228-9d25-d0273abebf33
 
 **WARNING:** Plugin may change your project structure (Resources folder), do not use it without version control (it's alfa version).
