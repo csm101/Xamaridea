@@ -31,10 +31,10 @@ namespace EgorBo.Xamaridea_VisualStudioPlugin
     /// </summary>
     // This attribute tells the PkgDef creation utility (CreatePkgDef.exe) that this class is
     // a package.
-    [PackageRegistration(UseManagedResourcesOnly = true)]
+    [PackageRegistration(UseManagedResourcesOnly = true, AllowsBackgroundLoading = true)]
     [InstalledProductRegistration("#110", "#112", "1.0", IconResourceID = 400)]
     [ProvideMenuResource("Menus.ctmenu", 1)]
-    [ProvideAutoLoad("f1536ef8-92ec-443c-9ed7-fdadf150da82")] //UICONTEXT_SolutionExists
+    [ProvideAutoLoad("f1536ef8-92ec-443c-9ed7-fdadf150da82", PackageAutoLoadFlags.BackgroundLoad)] //UICONTEXT_SolutionExists
     [Guid(GuidList.guidXamaridea_VisualStudioPluginPkgString)]
     public sealed class Xamaridea_VisualStudioPluginPackage : AsyncPackage
     {
@@ -66,7 +66,7 @@ namespace EgorBo.Xamaridea_VisualStudioPlugin
             Debug.WriteLine(string.Format(CultureInfo.CurrentCulture, "Entering Initialize() of: {0}", this.ToString()));
             await base.InitializeAsync(cancellationToken, progress);
 
-            if (GetService(typeof(IMenuCommandService)) is OleMenuCommandService mcs)
+            if (await GetServiceAsync(typeof(IMenuCommandService)) is OleMenuCommandService mcs)
             {
                 var menuCommandId = new CommandID(GuidList.guidXamaridea_VisualStudioPluginCmdSet, (int)PkgCmdIDList.cmdidOpenInIdeaCommand);
                 var menuItem = new OleMenuCommand(MenuItemCallback, menuCommandId);
