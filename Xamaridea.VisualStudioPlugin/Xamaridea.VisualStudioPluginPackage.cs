@@ -6,13 +6,14 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.ComponentModel.Design;
+using System.Threading;
 using System.Threading.Tasks;
 using EnvDTE;
-using Microsoft.Win32;
 using Microsoft.VisualStudio;
-using Microsoft.VisualStudio.Shell.Interop;
-using Microsoft.VisualStudio.OLE.Interop;
 using Microsoft.VisualStudio.Shell;
+using Microsoft.VisualStudio.Shell.Interop;
+using Package = System.IO.Packaging.Package;
+using Task = System.Threading.Tasks.Task;
 using Xamaridea.Core;
 using Xamaridea.Core.Exceptions;
 
@@ -35,7 +36,7 @@ namespace EgorBo.Xamaridea_VisualStudioPlugin
     [ProvideMenuResource("Menus.ctmenu", 1)]
     [ProvideAutoLoad("f1536ef8-92ec-443c-9ed7-fdadf150da82")] //UICONTEXT_SolutionExists
     [Guid(GuidList.guidXamaridea_VisualStudioPluginPkgString)]
-    public sealed class Xamaridea_VisualStudioPluginPackage : Package
+    public sealed class Xamaridea_VisualStudioPluginPackage : AsyncPackage
     {
         private static readonly string[] FileExtensions = { ".axml", ".xml" };
         private static readonly string[] FolderNames = { "Resources", "drawable", "layout", "values", "layout", "animator", "anim", "color", "menu", "raw", "xml" };
@@ -60,17 +61,16 @@ namespace EgorBo.Xamaridea_VisualStudioPlugin
         /// Initialization of the package; this method is called right after the package is sited, so this is the place
         /// where you can put all the initialization code that rely on services provided by VisualStudio.
         /// </summary>
-        protected override void Initialize()
+        protected override async Task InitializeAsync(CancellationToken cancellationToken, IProgress<ServiceProgressData> progress)
         {
-            Debug.WriteLine (string.Format(CultureInfo.CurrentCulture, "Entering Initialize() of: {0}", this.ToString()));
-            base.Initialize();
+            Debug.WriteLine(string.Format(CultureInfo.CurrentCulture, "Entering Initialize() of: {0}", this.ToString()));
+            await base.InitializeAsync(cancellationToken, progress);
 
-            var mcs = GetService(typeof(IMenuCommandService)) as OleMenuCommandService;
-            if ( null != mcs )
+            if (GetService(typeof(IMenuCommandService)) is OleMenuCommandService mcs)
             {
                 var menuCommandId = new CommandID(GuidList.guidXamaridea_VisualStudioPluginCmdSet, (int)PkgCmdIDList.cmdidOpenInIdeaCommand);
                 var menuItem = new OleMenuCommand(MenuItemCallback, menuCommandId);
-                menuItem.BeforeQueryStatus += MenuItem_OnBeforeQueryStatus;
+                menuItem.BeforeQueryStatus += async (sender, args) => await MenuItem_OnBeforeQueryStatus(sender, args);
                 mcs.AddCommand(menuItem);
 
                 //Add settings command
@@ -87,12 +87,12 @@ namespace EgorBo.Xamaridea_VisualStudioPlugin
         }
 
         #endregion
-        
-        private void MenuItem_OnBeforeQueryStatus(object sender, EventArgs e)
+
+        private async Task MenuItem_OnBeforeQueryStatus(object sender, EventArgs e)
         {
             bool enable = false;
             var menu = sender as OleMenuCommand;
-            var envDte = GetService(typeof(DTE)) as DTE;
+            var envDte = await GetServiceAsync(typeof(DTE)) as DTE;
             var selectedItems = envDte.SelectedItems.OfType<SelectedItem>().ToArray();
             if (selectedItems.Length == 1)
             {
@@ -123,6 +123,7 @@ namespace EgorBo.Xamaridea_VisualStudioPlugin
             }
             menu.Visible = enable;
         }
+
         private static bool DoesContain(string item, IEnumerable<string> strings)
         {
             return strings.Any(s => string.Equals(item, s, StringComparison.InvariantCultureIgnoreCase));
@@ -146,14 +147,14 @@ namespace EgorBo.Xamaridea_VisualStudioPlugin
 
             try
             {
-                var envDte = GetService(typeof(DTE)) as DTE;
+                var envDte = await GetServiceAsync(typeof(DTE)) as DTE;
                 var projectItem = envDte.SelectedItems.OfType<SelectedItem>().First().ProjectItem;
                 var project = projectItem.ContainingProject; //it should have at least one item
                 var fileName = project.FileName;
 
                 var synchronizer = new ProjectsSynchronizer(fileName, Settings.Default.AnidePath);
-                await synchronizer.MakeResourcesSubdirectoriesAndFilesLowercase(async () => AskPermissionToChangeCsProj());
-                ShowSuggestions();
+                await synchronizer.MakeResourcesSubdirectoriesAndFilesLowercase(async () =>  await AskPermissionToChangeCsProj());
+                await ShowSuggestionsAsync();
                 synchronizer.Sync(projectItem.FileCount > 0 ? projectItem.FileNames[0] : string.Empty);
                 project.Save();
             }
@@ -162,21 +163,21 @@ namespace EgorBo.Xamaridea_VisualStudioPlugin
             }
             catch (CsprojEditFailedException exc)
             {
-                ShowErrorDuringSync(".csproj edit failed: {0} ", exc);
+                await ShowErrorDuringSync(".csproj edit failed: {0} ", exc);
             }
             catch (FileRenameToLowercaseException exc)
             {
-                ShowErrorDuringSync("Renaming {0} to lowercase failed: {1}", exc.FileName, exc);
+                await ShowErrorDuringSync("Renaming {0} to lowercase failed: {1}", exc.FileName, exc);
             }
             catch (Exception exc)
             {
-                ShowErrorDuringSync("General failure: {0}", exc);
+                await ShowErrorDuringSync("General failure: {0}", exc);
             }
         }
 
-        private bool AskPermissionToChangeCsProj()
+        private async Task<bool> AskPermissionToChangeCsProj()
         {
-            var uiShell = (IVsUIShell)GetService(typeof(SVsUIShell));
+            IVsUIShell uiShell = await GetServiceAsync(typeof(SVsUIShell)) as IVsUIShell;
             Guid clsid = Guid.Empty;
             int result;
             ErrorHandler.ThrowOnFailure(uiShell.ShowMessageBox(
@@ -188,12 +189,12 @@ namespace EgorBo.Xamaridea_VisualStudioPlugin
             return result == 6; //TODO: find defined constant
         }
 
-        private void ShowSuggestions()
+        private async Task ShowSuggestionsAsync()
         {
             if (!Settings.Default.ShowSuggestions)
                 return;
             Settings.Default.ShowSuggestions = false;
-            var uiShell = (IVsUIShell)GetService(typeof(SVsUIShell));
+            var uiShell = await GetServiceAsync(typeof(SVsUIShell)) as IVsUIShell;
             Guid clsid = Guid.Empty;
             int result;
             ErrorHandler.ThrowOnFailure(uiShell.ShowMessageBox(
@@ -203,13 +204,13 @@ namespace EgorBo.Xamaridea_VisualStudioPlugin
                        OLEMSGICON.OLEMSGICON_INFO, 0, out result));
 
         }
-        
-        private void ShowErrorDuringSync(string errorFormat, params object[] args)
+
+        private async Task ShowErrorDuringSync(string errorFormat, params object[] args)
         {
-            var uiShell = (IVsUIShell)GetService(typeof(SVsUIShell));
+            var uiShell = await GetServiceAsync(typeof(SVsUIShell)) as IVsUIShell;
             Guid clsid = Guid.Empty;
             int result;
-            ErrorHandler.ThrowOnFailure(uiShell.ShowMessageBox(0, ref clsid, "Xamaridea", string.Format(errorFormat, args), string.Empty, 0, 
+            ErrorHandler.ThrowOnFailure(uiShell.ShowMessageBox(0, ref clsid, "Xamaridea", string.Format(errorFormat, args), string.Empty, 0,
                 OLEMSGBUTTON.OLEMSGBUTTON_OK, OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST, OLEMSGICON.OLEMSGICON_CRITICAL, 0, out result));
         }
     }
